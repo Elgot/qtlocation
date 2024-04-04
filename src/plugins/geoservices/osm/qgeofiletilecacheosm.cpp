@@ -74,6 +74,26 @@ void QGeoFileTileCacheOsm::onProviderResolutionError(const QGeoTileProviderOsm *
     clearObsoleteTiles(provider); // this still removes tiles who happen to be older than qgeotileproviderosm.cpp defaultTs
 }
 
+QStringList QGeoFileTileCacheOsm::getFileExtensions()
+{
+    QSet<QString> extensions;
+    QDir dir(m_offlineDirectory);
+    dir.setFilter(QDir::Files | QDir::NoSymLinks | QDir::NoDotAndDotDot);
+    for (const QFileInfo &fileInfo : dir.entryInfoList()) {
+        QString extension = fileInfo.suffix();
+
+        if (!extension.isEmpty()) {
+            extensions.insert(extension);
+        }
+    }
+
+    QStringList result;
+    for (const QString &extension : extensions) {
+        result << extension;
+    }
+    return result;    
+}
+
 // init() is always called before the provider resolution starts
 void QGeoFileTileCacheOsm::init()
 {
@@ -120,25 +140,32 @@ QSharedPointer<QGeoTileTexture> QGeoFileTileCacheOsm::getFromOfflineStorage(cons
     if (providerId < 0 || providerId >= m_providers.size())
         return QSharedPointer<QGeoTileTexture>();
 
-    const QString fileName = tileSpecToFilename(spec, QStringLiteral("*"), providerId);
-    QStringList validTiles = m_offlineDirectory.entryList({fileName});
-    if (!validTiles.size())
-        return QSharedPointer<QGeoTileTexture>();
+    const static QStringList extensions = getFileExtensions();
 
-    QFile file(m_offlineDirectory.absoluteFilePath(validTiles.first()));
-    if (!file.open(QIODevice::ReadOnly))
-        return QSharedPointer<QGeoTileTexture>();
-    QByteArray bytes = file.readAll();
-    file.close();
+    for (const QString &extension : extensions) {
+        const QString fileName = tileSpecToFilename(spec, extension, providerId);
+        if (!m_offlineDirectory.exists(fileName))
+            continue;
 
-    QImage image;
-    if (!image.loadFromData(bytes)) {
-        handleError(spec, QLatin1String("Problem with tile image"));
-        return QSharedPointer<QGeoTileTexture>();
+        QFile file(m_offlineDirectory.absoluteFilePath(fileName));
+
+        if (!file.open(QIODevice::ReadOnly))
+            return QSharedPointer<QGeoTileTexture>();
+        QByteArray bytes = file.readAll();
+        file.close();
+
+        QImage image;
+        if (!image.loadFromData(bytes)) {
+            handleError(spec, QLatin1String("Problem with tile image"));
+            return QSharedPointer<QGeoTileTexture>();
+        }
+
+        addToMemoryCache(spec, bytes, QString());
+        return addToTextureCache(spec, image);
     }
-
-    addToMemoryCache(spec, bytes, QString());
-    return addToTextureCache(spec, image);
+    
+    //No file found
+    return QSharedPointer<QGeoTileTexture>();   
 }
 
 void QGeoFileTileCacheOsm::dropTiles(int mapId)

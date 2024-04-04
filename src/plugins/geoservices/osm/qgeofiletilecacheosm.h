@@ -31,6 +31,7 @@ protected Q_SLOTS:
     void onProviderResolutionError(const QGeoTileProviderOsm *provider, QNetworkReply::NetworkError error);
 
 protected:
+    QStringList getFileExtensions();
     void init() override;
     inline QString tileSpecToFilename(const QGeoTileSpec &spec, const QString &format, int providerId) const;
     QString tileSpecToFilename(const QGeoTileSpec &spec, const QString &format, const QString &directory) const override;
